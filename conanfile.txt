@@ -1,0 +1,11 @@
+[requires]
+pybind11/3.0.1
+sqlite_orm/1.9.1
+
+[generators]
+CMakeDeps
+CMakeToolchain
+[layout]
+cmake_layout
+[options]
+pybind11/*:shared=False

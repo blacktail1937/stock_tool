@@ -1,0 +1,3 @@
+
+#include "stockcalcuator.h"
+
