@@ -1,0 +1,246 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - '*'           # 任何 tag 都触发
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+    inputs:
+      version_override:
+        description: 'Override version (optional)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Conan
+        run: |
+          python -m pip install --upgrade pip
+          pip install conan
+          conan --version
+
+      - name: Setup Conan profile
+        shell: pwsh
+        run: |
+          conan profile detect --force
+          
+          $profileContent = @"
+          [settings]
+          arch=x86_64
+          build_type=Release
+          compiler=msvc
+          compiler.cppstd=23
+          compiler.runtime=dynamic
+          compiler.version=193
+          os=Windows
+          "@
+          
+          $profilePath = "$env:USERPROFILE\.conan2\profiles\msvc2022"
+          $profileContent | Out-File -FilePath $profilePath -Encoding UTF8
+          echo "CONAN_PROFILE=msvc2022" >> $env:GITHUB_ENV
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.10.2'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+          cache: true
+          setup-python: false
+
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          $version = ""
+          $isRelease = $false
+          
+          if ($env:GITHUB_REF -match '^refs/tags/v?(.+)$') {
+            $version = $matches[1]
+            $isRelease = $true
+            Write-Host "Using tag version: $version"
+          }
+          elseif ("${{ github.event.inputs.version_override }}" -ne "") {
+            $version = "${{ github.event.inputs.version_override }}"
+            $isRelease = $true
+            Write-Host "Using manually overridden version: $version"
+          }
+          else {
+            $shortHash = git rev-parse --short HEAD
+            $branchName = "${{ github.ref_name }}" -replace '[^a-zA-Z0-9\-\.]', '-'
+            $version = "dev-$branchName-$shortHash"
+            $isRelease = $false
+            Write-Host "Generated dev version: $version"
+          }
+          
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "is_release=$isRelease" >> $env:GITHUB_OUTPUT
+
+      - name: Cache Conan packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: ${{ runner.os }}-conan-${{ hashFiles('**/conanfile.txt', '**/conanfile.py') }}
+          restore-keys: |
+            ${{ runner.os }}-conan-
+
+      - name: Configure with Conan and CMake
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path build -Force
+          cd build
+          
+          Write-Host "Running conan install..."
+          conan install .. `
+            --build=missing `
+            -s build_type=Release `
+            -c tools.cmake.cmaketoolchain:generator="Visual Studio 17 2022"
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Conan install failed"
+            exit $LASTEXITCODE
+          }
+          
+          # 查找 toolchain 文件
+          $toolchainPaths = @(
+            "conan_toolchain.cmake",
+            "generators/conan_toolchain.cmake",
+            "Release/generators/conan_toolchain.cmake"
+          )
+          
+          $toolchainPath = $null
+          foreach ($path in $toolchainPaths) {
+            if (Test-Path $path) {
+              $toolchainPath = $path
+              Write-Host "Found toolchain at: $path"
+              break
+            }
+          }
+          
+          if (-not $toolchainPath) {
+            Write-Host "ERROR: Could not find conan_toolchain.cmake"
+            exit 1
+          }
+          
+          cmake .. `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DPROJECT_VERSION="${{ steps.version.outputs.version }}" `
+            -DCMAKE_TOOLCHAIN_FILE="$toolchainPath" `
+            -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}"
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "CMake configure failed"
+            exit $LASTEXITCODE
+          }
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Package with version
+        id: package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $isRelease = "${{ steps.version.outputs.is_release }}" -eq "true"
+          $branchName = "${{ github.ref_name }}" -replace '[^a-zA-Z0-9\-\.]', '-'
+          
+          $zipName = "stock_tool-$version-windows.zip"
+          $displayName = "stock_tool-$version"
+          
+          $distDir = "stock_tool-$version"
+          New-Item -ItemType Directory -Path $distDir -Force
+          
+          if (Test-Path "build/Release/stock_tool.exe") {
+            Copy-Item build/Release/stock_tool.exe $distDir/
+          } else {
+            Copy-Item build/stock_tool.exe $distDir/
+          }
+          
+          if (Test-Path "scripts") {
+            Copy-Item -Path scripts -Destination $distDir/scripts -Recurse -Force
+          }
+          
+          Write-Host "Running windeployqt..."
+          windeployqt `
+            --dir $distDir `
+            --release `
+            --no-compiler-runtime `
+            $distDir/stock_tool.exe
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "windeployqt failed"
+            exit $LASTEXITCODE
+          }
+          
+          $versionInfo = @"
+          ========================================
+          股票工具版本信息
+          ========================================
+          版本号: $version
+          构建类型: $($isRelease ? '正式版' : '开发版')
+          构建时间: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+          构建环境: GitHub Actions
+          提交哈希: ${{ github.sha }}
+          分支: ${{ github.ref_name }}
+          "@
+                    $versionInfo | Out-File -FilePath $distDir/version.txt -Encoding UTF8
+                    
+                    $launcher = @"
+          @echo off
+          echo 股票工具 $version
+          echo 启动中...
+          start "" "%~dp0stock_tool.exe"
+          "@
+          $launcher | Out-File -FilePath $distDir/启动.cmd -Encoding ASCII
+          
+          Compress-Archive -Path $distDir/* -DestinationPath $zipName -Force
+          
+          echo "artifact_name=$zipName" >> $env:GITHUB_OUTPUT
+          echo "display_name=$displayName" >> $env:GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.display_name }}
+          path: ${{ steps.package.outputs.artifact_name }}
+          retention-days: 30
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ steps.version.outputs.version }}
+          files: ${{ steps.package.outputs.artifact_name }}
+          generate_release_notes: true
+          body: |
+            ## 📦 股票工具 ${{ steps.version.outputs.version }}
+            
+            ### ✨ 版本信息
+            - 版本号: ${{ steps.version.outputs.version }}
+            - 构建时间: ${{ steps.version.outputs.build_time || github.event.repository.updated_at }}
+            - 提交哈希: ${{ github.sha }}
+            - 分支: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

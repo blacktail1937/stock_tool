@@ -1,6 +1,28 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(stock_tool VERSION 0.1 LANGUAGES CXX)
+# ===== 简化版版本号处理 =====
+if(DEFINED ENV{PROJECT_VERSION})
+    set(VERSION_STRING "$ENV{PROJECT_VERSION}")
+else()
+    # 尝试获取标签版本
+    execute_process(
+        COMMAND git describe --tags --abbrev=0
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_TAG
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+
+    if(GIT_TAG MATCHES "^v?([0-9]+\\.[0-9]+\\.[0-9]+)")
+        set(VERSION_STRING "${CMAKE_MATCH_1}")
+    else()
+        set(VERSION_STRING "0.1.0")
+    endif()
+endif()
+
+project(stock_tool VERSION ${VERSION_STRING} LANGUAGES CXX)
+
+message(STATUS "Building version: ${PROJECT_VERSION}")
 
 include(cmake/conan.cmake)
 
@@ -40,7 +62,7 @@ qt_add_qml_module(${PROJECT_NAME}
     SOURCES
         util/stockcalcuator.h
         python/pythonwrapper.h
-        python/pythonwrapper.cpp
+        # python/pythonwrapper.cpp
         # stocksummarytablemodel.h
         # stocksummarytablemodel.cpp
         # astock/astockinfoloader.h
@@ -75,9 +97,19 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
 
+# ===== 编译选项 =====
 if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE "/utf-8;/Zc:inline;/W4;/WX")
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        "/utf-8"
+        "/Zc:inline"
+        "/W4"
+        "/WX"
+    )
     target_compile_options(${PROJECT_NAME} PRIVATE "/wd4702")
+
+    # if(DEFINED ENV{CI})
+    #     target_compile_options(${PROJECT_NAME} PRIVATE "/analyze")
+    # endif()
 else()
 endif()
 
@@ -91,17 +123,11 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/database
 )
 
-include(GNUInstallDirs)
-install(TARGETS ${PROJECT_NAME}
-    BUNDLE DESTINATION .
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
 
 # before build
 set(SCRIPT_SRC_DIR ${CMAKE_SOURCE_DIR}/scripts)  # 项目根目录的script
 set(SCRIPT_DST_DIR ${CMAKE_BINARY_DIR}/scripts)  # build目录的script
+set(EXE_SCRIPT_DIR ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/scripts)
 add_custom_target(
     copy_script_dir ALL
     # 步骤1：确保目标目录存在（避免拷贝失败）
@@ -113,4 +139,36 @@ add_custom_target(
     COMMENT "Copying script directory to build directory: ${SCRIPT_DST_DIR}"
     VERBATIM
 )
+add_custom_command(
+    TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${SCRIPT_DST_DIR}
+    ${EXE_SCRIPT_DIR}
+    COMMENT "Copying scripts to executable directory"
+)
 add_dependencies(${PROJECT_NAME} copy_script_dir)
+
+# 安装规则
+include(GNUInstallDirs)
+install(TARGETS ${PROJECT_NAME}
+    BUNDLE DESTINATION .
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+# ===== CPack 打包配置 =====
+set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_VENDOR "blacktail")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Stock Analysis Tool")
+set(CPACK_GENERATOR "ZIP;NSIS")
+set(CPACK_SOURCE_IGNORE_FILES "/build/;/\\\\.git/;/\\\\.github/")
+set(CPACK_NSIS_MODIFY_PATH ON)
+
+include(CPack)
+
+# ===== 测试（可选） =====
+enable_testing()
+if(EXISTS ${CMAKE_SOURCE_DIR}/tests)
+    add_subdirectory(tests)
+endif()
