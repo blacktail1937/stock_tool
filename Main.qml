@@ -538,12 +538,12 @@ ApplicationWindow {
             }
 
             Label {
-                text: "持仓盈亏: " + parent.stockReturns
+                text: "持仓盈亏: " + parent.stockReturns.toFixed(3)
                 color: parent.stockReturns < 0 ? "green" : "red"
             }
 
             Label {
-                text: "(如果)卖出盈亏: " + parent.stockSaleProfits
+                text: "(如果)卖出盈亏: " + parent.stockSaleProfits.toFixed(3)
                 color: parent.stockSaleProfits < 0 ? "green" : "red"
             }
 

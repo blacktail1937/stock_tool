@@ -569,20 +569,26 @@ std::optional<QtModel::StockSummaryModel> DataLoader::buildSummarySingle(QString
     if(model.currentStockPrice > std::numeric_limits<double>::epsilon()) {
         bool hasTransferFee = model.market == "沪A";
         // 持仓收益
-        model.stockReturns     = StockCalcuator::stockReturns(model.holdings,
-                                                          model.purchaseCost,
-                                                          model.currentStockPrice,
-                                                          hasTransferFee);
+        // model.stockReturns     = StockCalcuator::stockReturns(model.holdings,
+        //                                                   model.purchaseCost,
+        //                                                   model.currentStockPrice,
+        //                                                   hasTransferFee);
+        model.stockReturns =
+            StockCalcuator::stockValues(model.holdings, model.currentStockPrice) - model.totalCost;
         model.stockReturnsRate = model.stockReturns / model.totalCost * 100.;
 
         // 卖出利润
         model.stockSaleProceeds    = StockCalcuator::stockSaleProceeds(model.holdings,
                                                                     model.currentStockPrice,
                                                                     hasTransferFee);
-        model.stockSaleProfits     = StockCalcuator::stockSaleProfits(model.holdings,
-                                                                  model.purchaseCost,
-                                                                  model.currentStockPrice,
-                                                                  hasTransferFee);
+        // model.stockSaleProfits     = StockCalcuator::stockSaleProfits(model.holdings,
+        //                                                           model.purchaseCost,
+        //                                                           model.currentStockPrice,
+        //                                                           hasTransferFee);
+        model.stockSaleProfits = StockCalcuator::stockSaleProceeds(model.holdings,
+                                                                   model.currentStockPrice,
+                                                                   hasTransferFee) -
+                                 model.totalCost;
         model.stockSaleProfitsRate = model.stockSaleProfits / model.totalCost * 100.;
 
         // 手续费
@@ -596,10 +602,10 @@ std::optional<QtModel::StockSummaryModel> DataLoader::buildSummarySingle(QString
         // 保本
         model.breakevenStockPrice =
             StockCalcuator::breakevenStockPrice(model.holdings, model.totalCost, hasTransferFee);
-        model.breakevenBasedProfits    = StockCalcuator::stockSaleProfits(model.holdings,
-                                                                       model.purchaseCost,
-                                                                       model.breakevenStockPrice,
-                                                                       hasTransferFee);
+        model.breakevenBasedProfits = StockCalcuator::stockSaleProceeds(model.holdings,
+                                                                        model.breakevenStockPrice,
+                                                                        hasTransferFee) -
+                                      model.totalCost;
         model.breakevenBaseProfitsRate = model.breakevenBasedProfits / model.totalCost * 100.;
     }
 

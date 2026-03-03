@@ -59,6 +59,7 @@ Window {
         onUpdate: {
             //成本
             currentCost = getDetail(stockCode, DataLoaderQmlBridge.Cost)
+
             //现价
             currentPrice = getDetail(stockCode, DataLoaderQmlBridge.CurPrice)
             //持仓数量
@@ -168,7 +169,7 @@ Window {
                         font.pixelSize: 12
                     }
                     Text {
-                        text: currentCost
+                        text: currentCost.toFixed(3)
                         color: "cyan"
                         font.pixelSize: 28
                         font.bold: true
@@ -177,14 +178,14 @@ Window {
                 // 保本信息
                 Rectangle {
                     Layout.fillHeight: true
-                    // implicitWidth: innerLayout.implicitWidth + 20
-                    Layout.preferredWidth: 80
+                    implicitWidth: binnerLayout.implicitWidth + 20
                     color: "#f0f8ff"
                     radius: 5
                     border.color: "#c0c0c0"
                     border.width: 1
 
                     GridLayout {
+                        id: binnerLayout
                         columns: 2
                         columnSpacing: 5
                         // rows: 2
@@ -204,12 +205,12 @@ Window {
                             color: "#333333"
                         }
                         Text {
-                            text: breakevenPrice
+                            text: breakevenPrice.toFixed(3)
                             font.bold: true
                             color: "red"
                         }
                         Text {
-                            text: breakevenProfit
+                            text: breakevenProfit.toFixed(3)
                             font.bold: true
                             color: "red"
                         }
@@ -247,7 +248,7 @@ Window {
                         font.pixelSize: 12
                     }
                     Text {
-                        text: currentPrice
+                        text: currentPrice.toFixed(3)
                         color: "purple"
                         font.pixelSize: 28
                         font.bold: true
@@ -288,15 +289,15 @@ Window {
                             color: "#666666"
                         }
                         Text {
-                            text: saleProfits
+                            text: saleProfits.toFixed(3)
                             color: getColor(saleProfits)
                         }
                         Text {
-                            text: saleProfitsRate
+                            text: saleProfitsRate.toFixed(3)
                             color: getColor(saleProfitsRate)
                         }
                         Text {
-                            text: totalSellIncome
+                            text: totalSellIncome.toFixed(3)
                             color: getColor(saleProfits)
                         }
                     }
@@ -375,7 +376,7 @@ Window {
                         color: "#666666"
                     }
                     Text {
-                        text: stockReturns
+                        text: stockReturns.toFixed(3)
                         color: getColor(stockReturns)
                     }
                     Text {
@@ -384,7 +385,7 @@ Window {
                         color: "#666666"
                     }
                     Text {
-                        text: stockReturnsRate
+                        text: stockReturnsRate.toFixed(3)
                         color: getColor(stockReturnsRate)
                     }
                     Text {
@@ -393,7 +394,7 @@ Window {
                         color: "#666666"
                     }
                     Text {
-                        text: totalCost
+                        text: totalCost.toFixed(3)
                         color: "#333333"
                     }
 
@@ -404,7 +405,7 @@ Window {
                         color: "#666666"
                     }
                     Text {
-                        text: totalCommission
+                        text: totalCommission.toFixed(3)
                         color: "#333333"
                     }
                     Text {
@@ -413,7 +414,7 @@ Window {
                         color: "#666666"
                     }
                     Text {
-                        text: totalTransferFee
+                        text: totalTransferFee.toFixed(3)
                         color: "#333333"
                     }
 
@@ -426,7 +427,7 @@ Window {
                         color: "#666666"
                     }
                     Text {
-                        text: totalSellCommission
+                        text: totalSellCommission.toFixed(3)
                         color: "#333333"
                     }
                     Text {
@@ -435,7 +436,7 @@ Window {
                         color: "#666666"
                     }
                     Text {
-                        text: totalSellTransferFee
+                        text: totalSellTransferFee.toFixed(3)
                         color: "#333333"
                     }
 
@@ -446,7 +447,7 @@ Window {
                         color: "#666666"
                     }
                     Text {
-                        text: totalStampTax
+                        text: totalStampTax.toFixed(3)
                         color: "#333333"
                     }
                 }
