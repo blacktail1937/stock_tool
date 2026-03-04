@@ -1,26 +1,27 @@
 cmake_minimum_required(VERSION 3.16)
 
 # ===== 简化版版本号处理 =====
-if(DEFINED ENV{PROJECT_VERSION})
-    set(VERSION_STRING "$ENV{PROJECT_VERSION}")
-else()
-    # 尝试获取标签版本
-    execute_process(
-        COMMAND git describe --tags --abbrev=0
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        OUTPUT_VARIABLE GIT_TAG
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_QUIET
-    )
+# if(DEFINED ENV{PROJECT_VERSION})
+#     set(VERSION_STRING "$ENV{PROJECT_VERSION}")
+# else()
+#     # 尝试获取标签版本
+#     execute_process(
+#         COMMAND git describe --tags --abbrev=0
+#         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+#         OUTPUT_VARIABLE GIT_TAG
+#         OUTPUT_STRIP_TRAILING_WHITESPACE
+#         ERROR_QUIET
+#     )
 
-    if(GIT_TAG MATCHES "^v?([0-9]+\\.[0-9]+\\.[0-9]+)")
-        set(VERSION_STRING "${CMAKE_MATCH_1}")
-    else()
-        set(VERSION_STRING "0.1.0")
-    endif()
-endif()
+#     if(GIT_TAG MATCHES "^v?([0-9]+\\.[0-9]+\\.[0-9]+)")
+#         set(VERSION_STRING "${CMAKE_MATCH_1}")
+#     else()
+#         set(VERSION_STRING "0.1.0")
+#     endif()
+# endif()
 
-project(stock_tool VERSION ${VERSION_STRING} LANGUAGES CXX)
+# project(stock_tool VERSION ${VERSION_STRING} LANGUAGES CXX)
+project(stock_tool LANGUAGES CXX)
 
 message(STATUS "Building version: ${PROJECT_VERSION}")
 
@@ -55,10 +56,10 @@ qt_add_qml_module(${PROJECT_NAME}
         dialogs/StockAddWindow.qml
         dialogs/StockImportWindow.qml
         component/DateTimePicker.qml
-    RESOURCES
-        scripts/akshare_stock.py
-        scripts/tushare_stock.py
-        scripts/spider_stock.py
+    # RESOURCES
+    #     scripts/akshare_stock.py
+    #     scripts/tushare_stock.py
+    #     scripts/spider_stock.py
     SOURCES
         util/stockcalcuator.h
         python/pythonwrapper.h
@@ -83,19 +84,20 @@ qt_add_qml_module(${PROJECT_NAME}
         database/dataloader.cpp
         util/scopeguard.h
         util/common.h
+        util/logger.h
 
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an
 # explicit, fixed bundle identifier manually though.
-set_target_properties(${PROJECT_NAME} PROPERTIES
-#    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.${PROJECT_NAME}
-    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-    MACOSX_BUNDLE TRUE
-    WIN32_EXECUTABLE TRUE
-)
+# set_target_properties(${PROJECT_NAME} PROPERTIES
+# #    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.${PROJECT_NAME}
+#     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+#     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+#     MACOSX_BUNDLE TRUE
+#     WIN32_EXECUTABLE TRUE
+# )
 
 # ===== 编译选项 =====
 if(MSVC)
@@ -157,18 +159,18 @@ install(TARGETS ${PROJECT_NAME}
 )
 
 # ===== CPack 打包配置 =====
-set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
-set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_VENDOR "blacktail")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Stock Analysis Tool")
-set(CPACK_GENERATOR "ZIP;NSIS")
-set(CPACK_SOURCE_IGNORE_FILES "/build/;/\\\\.git/;/\\\\.github/")
-set(CPACK_NSIS_MODIFY_PATH ON)
+# set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
+# set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+# set(CPACK_PACKAGE_VENDOR "blacktail")
+# set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Stock Analysis Tool")
+# set(CPACK_GENERATOR "ZIP;NSIS")
+# set(CPACK_SOURCE_IGNORE_FILES "/build/;/\\\\.git/;/\\\\.github/")
+# set(CPACK_NSIS_MODIFY_PATH ON)
 
-include(CPack)
+# include(CPack)
 
 # ===== 测试（可选） =====
-enable_testing()
 if(EXISTS ${CMAKE_SOURCE_DIR}/tests)
+    enable_testing()
     add_subdirectory(tests)
 endif()

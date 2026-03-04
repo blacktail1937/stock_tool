@@ -58,6 +58,7 @@ void StockBaseInfoListModel::updateFilter(const QString& text) {
 
 void StockBaseInfoListModel::load(QList<QtModel::StockBaseInfoModel> model) {
     beginResetModel();
+    qInfo() << "添加股票=>读取股票基本信息";
     stocks_ = model;
     endResetModel();
 }

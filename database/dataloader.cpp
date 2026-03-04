@@ -28,6 +28,7 @@ struct Elapsed {
 };
 
 inline static std::atomic_bool running = true;
+inline static std::atomic_bool isMarketOpen = false;
 
 DataLoader::DataLoader(QObject* parent) :
     QObject(parent) {
@@ -289,6 +290,11 @@ void DataLoader::loadDataViaImport(QString content) {
         // }
 
         qDebug() << "导入数据成功!";
+
+        if(!isMarketOpen) {
+            qInfo() << "导入股票=>当前未开市，计算一次实时股价信息";
+            buildSummary();
+        }
     });
 }
 
@@ -457,7 +463,7 @@ void DataLoader::loadStockTradeRecords() {
 }
 
 void DataLoader::buildSummary() {
-    Elapsed e;
+    // Elapsed e;
     QList<QtModel::StockSummaryModel> models;
 
     for(auto&& [k, v]: stockTradeRecords_.asKeyValueRange()) {
@@ -566,7 +572,7 @@ std::optional<QtModel::StockSummaryModel> DataLoader::buildSummarySingle(QString
     // 均价
     model.purchaseCost = model.totalCost / model.holdings;
 
-    if(model.currentStockPrice > std::numeric_limits<double>::epsilon()) {
+    if(model.currentStockPrice > std::numeric_limits<double>::epsilon() && model.holdings > 0) {
         bool hasTransferFee = model.market == "沪A";
         // 持仓收益
         // model.stockReturns     = StockCalcuator::stockReturns(model.holdings,
@@ -632,7 +638,7 @@ std::optional<double> DataLoader::getStockPrice(QString code) {
 void DataLoader::updateRoutine() {
     routine_ = QtConcurrent::run([this] {
         while(running) {
-            if(!Common::isMarketOpen()) {
+            if(isMarketOpen = Common::isMarketOpen(); !isMarketOpen) {
                 return;
             }
 

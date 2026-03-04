@@ -1,4 +1,11 @@
-import time
+import sys
+import os
+
+# 检查 stdout 是否为空，如果为空则重定向到 null
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, 'w')
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, 'w')
 
 import akshare as ak
 import pandas as pd
@@ -147,6 +154,4 @@ def add(a,b):
 if __name__ == "__main__":
     # print(get_stock_price_xq("000776"))
     # 假设这是你持仓的股票代码列表
-    my_stock_codes = ['000001', '600519', '300750']
-
-    print(get_stock_prices_em(my_stock_codes))
+    print(get_stock_list_akshare())

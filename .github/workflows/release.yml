@@ -3,7 +3,7 @@ name: Build and Release
 on:
   push:
     tags:
-      - '*'           # 任何 tag 都触发
+      - '*' # 任何 tag 都触发
     branches:
       - dev
       - main
@@ -31,6 +31,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.13'
+
+      - name: Install Python Requirements
+        run: |
+          pip install akshare --upgrade
+          pip install pandas --upgrade
+          python -c "import akshare; print('Akshare version:', akshare.__version__)"
+          python -c "import pandas; print('Pandas version:', pandas.__version__)"
 
       - name: Install Conan
         run: |
@@ -65,7 +72,7 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2022_64'
-          cache: true
+          cache: false
           setup-python: false
 
       - name: Determine version
@@ -162,38 +169,57 @@ jobs:
         id: package
         shell: pwsh
         run: |
+          # 1. --- 强化清理：清理当前目录及递归子目录下的所有旧压缩包 ---
+          Get-ChildItem -Filter "*.zip" -Recurse | Remove-Item -Force -ErrorAction SilentlyContinue
+
           $version = "${{ steps.version.outputs.version }}"
           $isRelease = "${{ steps.version.outputs.is_release }}" -eq "true"
-          $branchName = "${{ github.ref_name }}" -replace '[^a-zA-Z0-9\-\.]', '-'
-          
-          $zipName = "stock_tool-$version-windows.zip"
           $displayName = "stock_tool-$version"
           
-          $distDir = "stock_tool-$version"
-          New-Item -ItemType Directory -Path $distDir -Force
+          $baseDist = "stock_tool-$version"
+          $fullDist = "stock_tool-full-$version"
+          $baseZip = "stock_tool-$version-windows.zip"
+          $fullZip = "stock_tool-full-$version-windows.zip"
           
-          if (Test-Path "build/Release/stock_tool.exe") {
-            Copy-Item build/Release/stock_tool.exe $distDir/
-          } else {
-            Copy-Item build/stock_tool.exe $distDir/
-          }
+          # 显式创建目录
+          if (Test-Path $baseDist) { Remove-Item -Path $baseDist -Recurse -Force }
+          if (Test-Path $fullDist) { Remove-Item -Path $fullDist -Recurse -Force }
           
+          New-Item -ItemType Directory -Path $baseDist -Force
+          
+          # 2. 拷贝执行文件
+          $exeSource = if (Test-Path "build/Release/stock_tool.exe") { "build/Release/stock_tool.exe" } else { "build/stock_tool.exe" }
+          Copy-Item $exeSource $baseDist/
+          
+          # 3. --- 核心修正：精准拷贝 DLL，取消递归 ---
+          # 之前的 Get-ChildItem -Recurse 会把 build 目录下 CPack 生成的 .zip 也当做文件拷进去
+          # 现在只拷贝同级目录的 DLL
+          $dllDir = Split-Path -Path $exeSource
+          Get-ChildItem -Path $dllDir -Filter *.dll | Copy-Item -Destination $baseDist/ -Force
+          # 如果 Conan 的 DLL 在 build 根目录，也拷过去（不递归）
+          Get-ChildItem -Path "build" -Filter *.dll | Copy-Item -Destination $baseDist/ -Force
+
+          # 4. 拷贝脚本
           if (Test-Path "scripts") {
-            Copy-Item -Path scripts -Destination $distDir/scripts -Recurse -Force
+            Copy-Item -Path scripts -Destination $baseDist/scripts -Recurse -Force
           }
           
+          # 5. 运行 windeployqt
           Write-Host "Running windeployqt..."
           windeployqt `
-            --dir $distDir `
+            --dir $baseDist `
             --release `
-            --no-compiler-runtime `
-            $distDir/stock_tool.exe
+            --compiler-runtime `
+            --qmldir . `
+            --no-translations `
+            $baseDist/stock_tool.exe
           
           if ($LASTEXITCODE -ne 0) {
             Write-Host "windeployqt failed"
             exit $LASTEXITCODE
           }
           
+          # 6. 生成版本信息和启动脚本
           $versionInfo = @"
           ========================================
           股票工具版本信息
@@ -205,26 +231,80 @@ jobs:
           提交哈希: ${{ github.sha }}
           分支: ${{ github.ref_name }}
           "@
-                    $versionInfo | Out-File -FilePath $distDir/version.txt -Encoding UTF8
-                    
-                    $launcher = @"
-          @echo off
-          echo 股票工具 $version
-          echo 启动中...
-          start "" "%~dp0stock_tool.exe"
-          "@
-          $launcher | Out-File -FilePath $distDir/启动.cmd -Encoding ASCII
+          $versionInfo | Out-File -FilePath $baseDist/version.txt -Encoding UTF8
           
-          Compress-Archive -Path $distDir/* -DestinationPath $zipName -Force
+          $launcher = "@echo off`necho 股票工具 $version`necho 启动中...`nstart `"`" `"%~dp0stock_tool.exe`""
+          $launcher | Out-File -FilePath $baseDist/启动.cmd -Encoding ASCII
+
+          # 7. 创建 Full 版本
+          Write-Host "Creating Full version..."
+          Copy-Item -Path $baseDist -Destination $fullDist -Recurse -Force
           
-          echo "artifact_name=$zipName" >> $env:GITHUB_OUTPUT
+          # 8. 嵌入 Python
+          $pyVersion = "3.13.1"
+          $pyZip = "python-$pyVersion-embed-amd64.zip"
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/$pyVersion/$pyZip" -OutFile $pyZip
+          
+          $pyDir = "$fullDist/python_env"
+          New-Item -ItemType Directory -Path $pyDir -Force
+          Expand-Archive -Path $pyZip -DestinationPath $pyDir
+          
+          # --- 补充：将 Python 核心 DLL 移动到 EXE 目录，否则程序无法启动 Python ---
+          if (Test-Path "$pyDir/python313.dll") {
+             Copy-Item "$pyDir/python313.dll" "$fullDist/" -Force
+          }
+          
+          # 提取 site-packages
+          # 修改：通常 GitHub Action 环境 site-packages 在 index 1
+          # 提取 site-packages 路径
+          $sitePackages = python -c "import site; print(site.getsitepackages()[-1])"
+          
+          if (Test-Path $sitePackages) {
+            Write-Host "Copying optimized site-packages from $sitePackages"
+            
+            # 获取所有子项，排除缓存和元数据
+            $itemsToCopy = Get-ChildItem -Path $sitePackages | Where-Object { 
+                $_.Name -notmatch "__pycache__" -and 
+                $_.Name -notmatch "\.dist-info" -and
+                $_.Name -notmatch "pip" -and
+                $_.Name -notmatch "setuptools"
+            }
+
+            foreach ($item in $itemsToCopy) {
+                # 使用 -Recurse 和 -Force 确保覆盖并保持结构
+                Copy-Item -Path $item.FullName -Destination "$pyDir/" -Recurse -Force
+            }
+          }
+          else {
+            Write-Host "WARNING: Could not find site-packages at $sitePackages"
+          }
+          
+          # 修改 ._pth 文件
+          $pthFile = Get-ChildItem -Path $pyDir -Filter "python*._pth" | Select-Object -First 1
+          if ($pthFile) {
+            # 覆盖写入，确保开启 site-packages
+            $pthContent = @(".", "python313.zip", "import site")
+            $pthContent | Out-File -FilePath $pthFile.FullName -Encoding ASCII
+          }
+
+          # 9. 压缩
+          Write-Host "Compressing artifacts..."
+          # 确保使用绝对干净的路径
+          Compress-Archive -Path "$baseDist\*" -DestinationPath $baseZip -Force
+          Compress-Archive -Path "$fullDist\*" -DestinationPath $fullZip -Force
+          
+          # 10. 输出结果
+          echo "base_zip=$baseZip" >> $env:GITHUB_OUTPUT
+          echo "full_zip=$fullZip" >> $env:GITHUB_OUTPUT
           echo "display_name=$displayName" >> $env:GITHUB_OUTPUT
 
-      - name: Upload artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.display_name }}
-          path: ${{ steps.package.outputs.artifact_name }}
+          path: |
+            ${{ steps.package.outputs.base_zip }}
+            ${{ steps.package.outputs.full_zip }}
           retention-days: 30
 
       - name: Create Release
@@ -232,7 +312,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ steps.version.outputs.version }}
-          files: ${{ steps.package.outputs.artifact_name }}
+          files: |
+            ${{ steps.package.outputs.base_zip }}
+            ${{ steps.package.outputs.full_zip }}
           generate_release_notes: true
           body: |
             ## 📦 股票工具 ${{ steps.version.outputs.version }}
@@ -241,6 +323,8 @@ jobs:
             - 版本号: ${{ steps.version.outputs.version }}
             - 构建时间: ${{ steps.version.outputs.build_time || github.event.repository.updated_at }}
             - 提交哈希: ${{ github.sha }}
-            - 分支: ${{ github.ref_name }}
+            - 分支: ${{ steps.version.outputs.branch || github.ref_name }}
+          draft: false
+
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

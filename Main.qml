@@ -10,9 +10,11 @@ ApplicationWindow {
     id: mainWindow
 
     visible: true
-    minimumWidth: 800
+    // minimumWidth: 800
+    minimumHeight: 800
 
     width: widthController.totalWidth + mainLayout.anchors.margins * 4
+
     height: 800
     title: "股票持仓汇总表"
 
@@ -256,19 +258,19 @@ ApplicationWindow {
 
                     resizableColumns: true
 
-                    Connections {
-                        target: horizontalHeader
-                        // 注意信号参数：column (int), oldSize (real), newSize (real)
-                        function onSectionResized(column, oldSize, newSize) {
-                            // 更新存储的宽度
-                            var temp = widthController.columnWidths
-                            temp[column] = newSize
-                            widthController.columnWidths = temp // 触发属性变更通知
+                    // Connections {
+                    //     target: horizontalHeader
+                    //     // 注意信号参数：column (int), oldSize (real), newSize (real)
+                    //     function onSectionResized(column, oldSize, newSize) {
+                    //         // 更新存储的宽度
+                    //         var temp = widthController.columnWidths
+                    //         temp[column] = newSize
+                    //         widthController.columnWidths = temp // 触发属性变更通知
 
-                            // 强制同步表格布局
-                            tableView.forceLayout()
-                        }
-                    }
+                    //         // 强制同步表格布局
+                    //         tableView.forceLayout()
+                    //     }
+                    // }
 
                     // 表头委托
                     delegate: Rectangle {
